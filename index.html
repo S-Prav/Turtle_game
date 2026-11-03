@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sea Turtle Budget Game</title>
+<style>
+:root{
+  --bg:#f4f7f6; --card:#ffffff; --ink:#14231f; --muted:#5b6b66; --line:#d9e2df;
+  --accent:#0f7a6c; --accent-ink:#ffffff; --warn:#c0392b; --good:#1e8e3e; --bad:#b3541e;
+  --track:#dfe7e4;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0e1614; --card:#16211e; --ink:#e7efec; --muted:#9db0aa; --line:#26342f;
+    --accent:#3cc2ad; --accent-ink:#06201b; --warn:#ff7a6b; --good:#5fd47e; --bad:#f0a46b;
+    --track:#26342f;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px 16px 48px}
+h1{font-size:1.35rem;margin:4px 0 2px}
+.sub{color:var(--muted);margin:0 0 14px;font-size:.95rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.budget{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:8px 0 12px}
+.budget b{font-size:1.4rem}
+.budget .zero{color:var(--warn)}
+.stage{padding:12px 0;border-top:1px solid var(--line)}
+.stage:first-child{border-top:0;padding-top:2px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.name{font-weight:650}
+.pts{font-variant-numeric:tabular-nums;font-weight:650;color:var(--accent);white-space:nowrap}
+.act{color:var(--muted);font-size:.88rem;margin:2px 0 6px}
+.surv{color:var(--muted);font-size:.85rem;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:36px;accent-color:var(--accent);margin:0}
+input[type=range]:disabled{opacity:.55}
+button{font:inherit;font-weight:650;border:0;border-radius:12px;padding:14px 16px;width:100%;
+  background:var(--accent);color:var(--accent-ink);cursor:pointer;min-height:48px}
+button.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+.btns{display:grid;gap:10px;margin-top:12px}
+input[type=text]{font:inherit;width:100%;padding:13px 12px;border-radius:12px;border:1.5px solid var(--line);
+  background:var(--bg);color:var(--ink);min-height:48px;text-transform:uppercase;letter-spacing:.08em}
+.msg{min-height:1.3em;font-size:.9rem;color:var(--warn);margin:6px 0 0}
+.big{font-size:2.6rem;font-weight:750;font-variant-numeric:tabular-nums;line-height:1.1}
+.status{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:650;font-size:.9rem;margin-top:6px}
+.status.good{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.status.bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.bars{display:grid;gap:8px;margin-top:10px}
+.bar{display:grid;grid-template-columns:96px 1fr 58px;align-items:center;gap:8px;font-size:.88rem}
+.bar .t{height:12px;background:var(--track);border-radius:6px;position:relative;overflow:hidden}
+.bar .f{position:absolute;inset:0 auto 0 0;background:var(--muted);border-radius:6px}
+.bar.you .f{background:var(--accent)}
+.bar.you{font-weight:700}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums}
+.note{color:var(--muted);font-size:.8rem;margin-top:10px}
+.live{display:flex;justify-content:space-between;align-items:center}
+.hidden{display:none !important}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+td,th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+@keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.shake{animation:shake .25s 2}
+</style>
+</head>
+<body>
+<main>
+
+<!-- ===================== PLAYER VIEW ===================== -->
+<section id="player">
+  <h1>🐢 You run a sea turtle agency</h1>
+  <p class="sub" id="rules">Spend your budget to raise survival at each life stage.</p>
+
+  <div class="budget" aria-live="polite">
+    <span>Points left</span>
+    <b id="left"></b>
+  </div>
+
+  <div id="liveBox" class="card live hidden" aria-live="polite">
+    <span>Population growth λ</span>
+    <span><b id="liveLam" class="pts" style="font-size:1.3rem">–</b></span>
+  </div>
+
+  <div class="card" id="stages"></div>
+
+  <div class="btns" id="lockBtns">
+    <button id="lockBtn">Lock in my plan</button>
+  </div>
+
+  <!-- Locked, waiting -->
+  <div id="lockedBox" class="card hidden">
+    <p style="margin:0 0 4px"><b>🔒 Locked in.</b> Wait for the reveal.</p>
+    <p class="sub" style="margin:0 0 10px">When the presenter gives the code word, type it here.</p>
+    <input id="code" type="text" placeholder="Code word" autocomplete="off" autocapitalize="characters">
+    <p class="msg" id="codeMsg"></p>
+    <div class="btns"><button id="revealBtn">Reveal my result</button></div>
+  </div>
+
+  <!-- Result -->
+  <div id="resultBox" class="card hidden" aria-live="polite">
+    <div class="sub" style="margin:0">Your population growth rate</div>
+    <div class="big" id="resLam">–</div>
+    <div id="resStatus" class="status"></div>
+    <p id="resText" style="margin:10px 0 0"></p>
+    <div class="bars" id="cmpBars"></div>
+    <p class="note">λ = 1 means stable. Above 1 grows, below 1 shrinks. Model: loggerhead stage matrix, Crowder et al. (1994) estimates.</p>
+    <div class="btns"><button class="ghost" id="round2Btn">Play round 2 (see λ live)</button></div>
+  </div>
+</section>
+
+<!-- ===================== PRESENTER FALLBACK (?presenter) ===================== -->
+<section id="presenter" class="hidden">
+  <h1>Presenter fallback</h1>
+  <p class="sub">Which plan saves the population? Let the room vote, then reveal.</p>
+  <div class="card">
+    <table id="presetTable"></table>
+    <div class="btns"><button id="presetReveal">Reveal λ</button></div>
+  </div>
+  <div class="card">
+    <b>Reference points</b>
+    <div class="bars" id="refBars"></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* =========================================================
+   CONFIG — edit these after verifying against TIEE / the 1994 paper
+   ========================================================= */
+const CODE_WORD = "TURTLE";          // reveal code (case-insensitive)
+const BUDGET = 120;                  // total points
+const CAP = 60;                      // max points per stage
+const STEP = 0.001;                  // survival gained per point (+0.1%)
+const MAX_SURV = 0.95;               // survival ceiling
+
+// [UNVERIFIED] Crowder et al. (1994) 5-stage values, recovered from a homework sheet.
+const BASE = {1: 0.675, 2: 0.750, 3: 0.676, 4: 0.743, 5: 0.8091}; // annual stage survival p_i
+const D    = {2: 6.41, 3: 7.39, 4: 5.56};                        // stage durations (years)
+const F4 = 4.655, F5 = 61.896;                                   // fecundities (fixed)
+
+const STAGES = [
+  {i:1, icon:"🥚", name:"Eggs & hatchlings", act:"Nest protection, predator control, beach lighting rules"},
+  {i:2, icon:"🐢", name:"Small juveniles",   act:"Longline gear changes, bycatch monitoring"},
+  {i:3, icon:"🐢", name:"Large juveniles",   act:"Turtle excluder devices in shrimp trawls"},
+  {i:4, icon:"🐢", name:"Subadults",         act:"Coastal gillnet and trap/pot measures"},
+  {i:5, icon:"🐢", name:"Adults",            act:"Protect nesting females, cut adult bycatch"},
+];
+
+const PRESETS = [
+  {name:"A · Egg-heavy",       alloc:{1:60, 5:60}},
+  {name:"B · Even spread",     alloc:{1:24, 2:24, 3:24, 4:24, 5:24}},
+  {name:"C · Juvenile-heavy",  alloc:{2:60, 3:60}},
+];
+
+/* =========================================================
+   MODEL (Crouse et al. 1987 stage formulas)
+   ========================================================= */
+function buildMatrix(p){
+  const A = Array.from({length:5}, () => Array(5).fill(0));
+  A[0][3] = F4; A[0][4] = F5;
+  A[1][0] = p[1];                                   // G1 = p1 (1-year stage)
+  for (const i of [2,3,4]){
+    const q = p[i], d = D[i], den = 1 - Math.pow(q, d);
+    A[i-1][i-1] = q * (1 - Math.pow(q, d-1)) / den; // P_i (stay)
+    A[i][i-1]   = Math.pow(q, d) * (1 - q) / den;   // G_i (grow)
+  }
+  A[4][4] = p[5];                                   // adults stay
+  return A;
+}
+function lambda(A, maxIters=2000, tol=1e-12){      // power method, stops once converged
+  let n = [0.2,0.2,0.2,0.2,0.2], lam = 0;
+  for (let t=0; t<maxIters; t++){
+    const m = [0,0,0,0,0];
+    for (let r=0;r<5;r++){ let s=0; for (let j=0;j<5;j++) s += A[r][j]*n[j]; m[r]=s; }
+    const sm = m[0]+m[1]+m[2]+m[3]+m[4];          // n always sums to 1
+    for (let r=0;r<5;r++) n[r] = m[r]/sm;
+    if (Math.abs(sm - lam) < tol) return sm;
+    lam = sm;
+  }
+  return lam;
+}
+function score(alloc){
+  const p = {};
+  for (let i=1;i<=5;i++) p[i] = Math.min(MAX_SURV, BASE[i] + Math.min(alloc[i]||0, CAP) * STEP);
+  return lambda(buildMatrix(p));
+}
+const REF = {
+  baseline: score({}),
+  eggOnly:  score({1:CAP}),
+  best:     bestPossible(),
+};
+function bestPossible(){
+  // More survival never lowers λ, so the best plan spends the whole budget.
+  // 1) Coarse search over full-budget plans in steps of G points.
+  // 2) Fine-tune by moving single points between stages until nothing improves.
+  const total = Math.min(BUDGET, 5*CAP);
+  const G = Math.max(1, Math.round(CAP / 6));
+  let best = -1, plan = null;
+  const tryPlan = x => { const l = score({1:x[0],2:x[1],3:x[2],4:x[3],5:x[4]}); if (l > best){ best = l; plan = x.slice(); } };
+  for (let a=0;a<=CAP;a+=G) for (let b=0;b<=CAP;b+=G)
+  for (let c=0;c<=CAP;c+=G) for (let d=0;d<=CAP;d+=G){
+    const e = total-a-b-c-d;
+    if (e >= 0 && e <= CAP) tryPlan([a,b,c,d,e]);
+  }
+  if (!plan){                                       // fallback start: fill stages in order
+    let r = total; plan = [0,0,0,0,0].map(() => { const v = Math.min(CAP, r); r -= v; return v; });
+    tryPlan(plan);
+  }
+  for (let improved = true; improved; ){
+    improved = false;
+    for (let i=0;i<5;i++) for (let j=0;j<5;j++){
+      if (i===j || plan[i]===0 || plan[j]===CAP) continue;
+      const x = plan.slice(); x[i]--; x[j]++;
+      const before = best; tryPlan(x);
+      if (best > before) improved = true;
+    }
+  }
+  return best;
+}
+
+/* =========================================================
+   STORAGE (so a refresh doesn't lose a locked plan)
+   ========================================================= */
+const KEY = "turtle-game-v2";                       // bump this if the rules change
+function load(){ try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch(e){ return null; } }
+function save(s){ try { localStorage.setItem(KEY, JSON.stringify(s)); } catch(e){} }
+
+/* =========================================================
+   PLAYER UI
+   ========================================================= */
+const $ = id => document.getElementById(id);
+let state = load() || {alloc:{1:0,2:0,3:0,4:0,5:0}, phase:"play"}; // play | locked | revealed | round2
+const sliders = {};
+
+function spent(){ return Object.values(state.alloc).reduce((s,x)=>s+x,0); }
+const fmt = x => x.toFixed(4);
+
+function renderStages(){
+  const box = $("stages");
+  box.innerHTML = "";
+  for (const s of STAGES){
+    const el = document.createElement("div");
+    el.className = "stage";
+    el.innerHTML = `
+      <div class="row"><span class="name">${s.icon} ${s.name}</span><span class="pts" id="p${s.i}"></span></div>
+      <div class="act">${s.act}</div>
+      <input type="range" min="0" max="${CAP}" step="1" id="s${s.i}" aria-label="${s.name} points">
+      <div class="surv" id="v${s.i}"></div>`;
+    box.appendChild(el);
+    const r = el.querySelector("input");
+    r.value = state.alloc[s.i];
+    r.addEventListener("input", () => {
+      let v = +r.value;
+      const others = spent() - state.alloc[s.i];
+      if (others + v > BUDGET) v = BUDGET - others;  // clamp to remaining budget
+      r.value = v; state.alloc[s.i] = v;
+      save(state); update();
+    });
+    sliders[s.i] = r;
+  }
+}
+
+function update(){
+  const left = BUDGET - spent();
+  $("left").textContent = left;
+  $("left").className = left === 0 ? "zero" : "";
+  for (const s of STAGES){
+    const pts = state.alloc[s.i];
+    const surv = Math.min(MAX_SURV, BASE[s.i] + pts*STEP);
+    $("p"+s.i).textContent = pts + " pts";
+    $("v"+s.i).textContent = `Survival ${(BASE[s.i]*100).toFixed(1)}% → ${(surv*100).toFixed(1)}%`;
+  }
+  const editable = state.phase === "play" || state.phase === "round2";
+  for (const r of Object.values(sliders)) r.disabled = !editable;
+  $("lockBtns").classList.toggle("hidden", !editable || state.phase === "round2");
+  $("lockedBox").classList.toggle("hidden", state.phase !== "locked");
+  $("resultBox").classList.toggle("hidden", !(state.phase === "revealed" || state.phase === "round2"));
+  $("liveBox").classList.toggle("hidden", state.phase !== "round2");
+  $("round2Btn").classList.toggle("hidden", state.phase === "round2");
+  if (state.phase === "round2") $("liveLam").textContent = fmt(score(state.alloc));
+  if (state.phase === "revealed" || state.phase === "round2") renderResult();
+}
+
+function bars(el, items){
+  const lo = 0.9, hi = Math.max(...items.map(x=>x.v), 1.05) + 0.01;
+  el.innerHTML = items.map(x => `
+    <div class="bar ${x.you?"you":""}"><span>${x.label}</span>
+      <span class="t"><span class="f" style="width:${Math.max(2,(x.v-lo)/(hi-lo)*100)}%"></span></span>
+      <span class="v">${fmt(x.v)}</span></div>`).join("");
+}
+
+function renderResult(){
+  const lam = score(state.alloc);
+  $("resLam").textContent = "λ = " + fmt(lam);
+  const ok = lam >= 1;
+  $("resStatus").className = "status " + (ok ? "good" : "bad");
+  $("resStatus").textContent = ok ? "Population saved" : "Still declining";
+  const pct = (lam - 1) * 100;
+  $("resText").textContent = ok
+    ? `Your turtles grow about ${pct.toFixed(1)}% per year. In 50 years: about ${Math.pow(lam,50).toFixed(1)}× today's population.`
+    : `Your turtles shrink about ${(-pct).toFixed(1)}% per year. In 50 years: about ${Math.round(Math.pow(lam,50)*100)}% of today's population.`;
+  bars($("cmpBars"), [
+    {label:"No action", v:REF.baseline},
+    {label:"Max eggs",  v:REF.eggOnly},
+    {label:"You",       v:lam, you:true},
+    {label:"Best plan", v:REF.best},
+  ]);
+}
+
+$("lockBtn").addEventListener("click", () => {
+  const left = BUDGET - spent();
+  const q = left > 0 ? `You still have ${left} unspent points (they'll be wasted). Lock in anyway?` : "Lock in your plan? You can't change it afterwards.";
+  if (!confirm(q)) return;
+  state.phase = "locked"; save(state); update();
+});
+
+$("revealBtn").addEventListener("click", () => {
+  const v = $("code").value.trim().toUpperCase();
+  if (v === CODE_WORD.toUpperCase()){
+    state.phase = "revealed"; save(state); update();
+    $("resultBox").scrollIntoView({behavior:"smooth", block:"start"});
+  } else {
+    $("codeMsg").textContent = v ? "Not the code word. Wait for the presenter." : "Type the code word first.";
+    $("code").classList.remove("shake"); void $("code").offsetWidth; $("code").classList.add("shake");
+  }
+});
+$("code").addEventListener("keydown", e => { if (e.key === "Enter") $("revealBtn").click(); });
+
+$("round2Btn").addEventListener("click", () => {
+  state.phase = "round2"; save(state); update();
+  window.scrollTo({top:0, behavior:"smooth"});
+});
+
+/* =========================================================
+   PRESENTER FALLBACK
+   ========================================================= */
+function initPresenter(){
+  $("player").classList.add("hidden");
+  $("presenter").classList.remove("hidden");
+  const names = ["Eggs","Sm juv","Lg juv","Subad","Adult"];
+  const rows = PRESETS.map((p,k) => `<tr><td><b>${p.name}</b><br><span class="surv">${
+    STAGES.map((s,j)=> p.alloc[s.i] ? names[j]+" "+p.alloc[s.i] : null).filter(Boolean).join(" · ")
+  }</span></td><td class="n" id="pl${k}">?</td></tr>`).join("");
+  $("presetTable").innerHTML = `<tr><th>Plan (points)</th><th class="n">λ</th></tr>` + rows;
+  $("presetReveal").addEventListener("click", () => {
+    PRESETS.forEach((p,k) => {
+      const l = score(p.alloc);
+      $("pl"+k).innerHTML = `${fmt(l)}<br><span class="status ${l>=1?"good":"bad"}">${l>=1?"saved":"declining"}</span>`;
+    });
+  });
+  bars($("refBars"), [
+    {label:"No action", v:REF.baseline},
+    {label:"Max eggs",  v:REF.eggOnly},
+    {label:"Best plan", v:REF.best, you:true},
+  ]);
+}
+
+/* =========================================================
+   START
+   ========================================================= */
+const params = new URLSearchParams(location.search);
+if (params.has("presenter")) initPresenter();
+else if (params.has("reset")) { try{localStorage.removeItem(KEY);}catch(e){} location.replace(location.pathname); }
+else {
+  $("rules").textContent = `You have ${BUDGET} points. Each point raises a stage's survival by ${+(STEP*100).toFixed(2)}%. Max ${CAP} points per stage.`;
+  renderStages(); update();
+}
+</script>
+</body>
+</html>
